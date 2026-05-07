@@ -1,0 +1,80 @@
+/* SillyTavern Chinese Converter Extension Styles */
+
+#chinese-converter-settings {
+    margin: 10px 0;
+}
+
+.chinese-converter-controls {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.chinese-converter-type {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.chinese-converter-type label {
+    font-weight: bold;
+    min-width: 80px;
+}
+
+.chinese-converter-type select {
+    flex: 1;
+    padding: 5px;
+    border-radius: 5px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    background-color: var(--SmartThemeBodyColor);
+    color: var(--SmartThemeQuoteColor);
+}
+
+.chinese-converter-actions {
+    display: flex;
+    gap: 10px;
+}
+
+#chinese-converter-convert-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+#chinese-converter-convert-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+#chinese-converter-convert-btn i {
+    font-size: 1.2em;
+}
+
+/* 複選框樣式優化 */
+.chinese-converter-controls .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.chinese-converter-controls .checkbox_label input[type="checkbox"] {
+    cursor: pointer;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    .chinese-converter-actions {
+        flex-direction: column;
+    }
+    
+    #chinese-converter-convert-btn {
+        width: 100%;
+    }
+}

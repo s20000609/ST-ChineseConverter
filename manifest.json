@@ -1,0 +1,12 @@
+{
+  "display_name": "簡繁轉換 (Chinese Converter)",
+  "loading_order": 10,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "ENI",
+  "version": "1.0.0",
+  "homePage": "https://github.com/s20000609/ST-ChineseConverter",
+  "auto_update": false
+}
