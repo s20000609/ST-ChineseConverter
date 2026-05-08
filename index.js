@@ -179,6 +179,65 @@
 
     // === UI相關 ===
 
+    // 一鍵轉換所有Regex規則
+    async function convertAllRegexRules() {
+        try {
+            if (!converter) {
+                toastr.error('轉換器未初始化', 'Chinese Converter');
+                return;
+            }
+
+            const context = SillyTavern.getContext();
+            
+            // 讀取Regex設定
+            const regexSettings = context.extensionSettings.regex;
+            
+            if (!regexSettings || !Array.isArray(regexSettings)) {
+                toastr.info('沒有找到Regex規則', 'Chinese Converter');
+                return;
+            }
+
+            let convertedCount = 0;
+
+            // 遍歷所有Regex規則
+            regexSettings.forEach(rule => {
+                if (rule.replaceString && typeof rule.replaceString === 'string') {
+                    const original = rule.replaceString;
+                    const converted = convertText(original);
+                    
+                    if (original !== converted) {
+                        rule.replaceString = converted;
+                        convertedCount++;
+                    }
+                }
+                
+                // 也轉換findRegex裡的中文（如果有）
+                if (rule.findRegex && typeof rule.findRegex === 'string') {
+                    const original = rule.findRegex;
+                    const converted = convertText(original);
+                    
+                    if (original !== converted) {
+                        rule.findRegex = converted;
+                    }
+                }
+            });
+
+            // 保存設定
+            await context.saveSettingsDebounced();
+
+            toastr.success(
+                `已轉換 ${convertedCount} 個Regex規則！請重新整理頁面讓變更生效`,
+                'Chinese Converter',
+                { timeOut: 5000 }
+            );
+            
+            console.log(DEBUG_PREFIX, `Converted ${convertedCount} regex rules`);
+        } catch (error) {
+            console.error(DEBUG_PREFIX, 'Failed to convert regex rules:', error);
+            toastr.error(`轉換失敗: ${error.message}`, 'Chinese Converter');
+        }
+    }
+
     // 創建UI
     function createUI() {
         const settingsHtml = `
@@ -200,9 +259,13 @@
                                 <option value="t2s" ${extensionSettings.conversionType === 't2s' ? 'selected' : ''}>繁體 → 簡體</option>
                             </select>
                         </div>
+                        <div style="margin-top: 10px;">
+                            <button id="chinese-converter-convert-regex" class="menu_button">一鍵轉換Regex規則</button>
+                        </div>
                         <small style="display: block; margin-top: 10px; opacity: 0.7;">
                             💡 開啟後，每次送給AI前都會自動轉換！<br>
-                            AI看到繁體就會自然回應繁體！
+                            AI看到繁體就會自然回應繁體！<br>
+                            點「一鍵轉換Regex」可以轉換所有Regex規則裡的簡體字！
                         </small>
                     </div>
                 </div>
@@ -231,6 +294,10 @@
             extensionSettings.conversionType = e.target.value;
             initConverter();
             saveSettings();
+        });
+
+        document.getElementById('chinese-converter-convert-regex')?.addEventListener('click', () => {
+            convertAllRegexRules();
         });
 
         console.log(DEBUG_PREFIX, 'UI created successfully');
