@@ -233,21 +233,71 @@
         if (context.extensionSettings[MODULE_NAME]) {
             Object.assign(extensionSettings, context.extensionSettings[MODULE_NAME]);
             console.log(DEBUG_PREFIX, 'Settings loaded:', extensionSettings);
+            
+            // **關鍵：載入後更新UI**
+            updateUI();
         }
+    }
+    
+    // 更新UI以反映當前設定
+    function updateUI() {
+        const autoCheckbox = document.getElementById('chinese-converter-auto');
+        const typeSelect = document.getElementById('chinese-converter-type');
+        
+        if (autoCheckbox) {
+            autoCheckbox.checked = extensionSettings.autoConvert;
+        }
+        if (typeSelect) {
+            typeSelect.value = extensionSettings.conversionType;
+        }
+        
+        console.log(DEBUG_PREFIX, 'UI updated with current settings');
     }
 
     // 監聽消息生成事件（用於自動轉換）
     function setupEventListeners() {
-        const context = SillyTavern.getContext();
+        // **用MutationObserver監聽DOM變化，不依賴事件系統**
+        const chatContainer = document.getElementById('chat');
         
-        // 監聽AI回覆
-        context.eventSource.on('MESSAGE_RECEIVED', (message) => {
-            if (extensionSettings.enabled && extensionSettings.autoConvert) {
-                convertMessage(message);
+        if (!chatContainer) {
+            console.error(DEBUG_PREFIX, 'Chat container not found!');
+            return;
+        }
+        
+        // 創建Observer監聽新訊息
+        const observer = new MutationObserver((mutations) => {
+            // 只在自動轉換開啟時處理
+            if (!extensionSettings.enabled || !extensionSettings.autoConvert) {
+                return;
             }
+            
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    // 檢查是否是訊息元素
+                    if (node.nodeType === 1 && node.classList?.contains('mes')) {
+                        // 找到訊息文字元素
+                        const mesText = node.querySelector('.mes_block .mes_text');
+                        if (mesText) {
+                            // 自動轉換新訊息
+                            const originalHTML = mesText.innerHTML;
+                            const convertedHTML = convertText(originalHTML);
+                            if (originalHTML !== convertedHTML) {
+                                mesText.innerHTML = convertedHTML;
+                                console.log(DEBUG_PREFIX, 'Auto-converted new message');
+                            }
+                        }
+                    }
+                });
+            });
+        });
+        
+        // 開始監聽
+        observer.observe(chatContainer, {
+            childList: true,  // 監聽子元素變化
+            subtree: true     // 監聽所有後代
         });
 
-        console.log(DEBUG_PREFIX, 'Event listeners setup');
+        console.log(DEBUG_PREFIX, 'MutationObserver setup for auto-conversion');
     }
 
     // 初始化擴展
