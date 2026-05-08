@@ -189,18 +189,61 @@
 
             const context = SillyTavern.getContext();
             
-            // 讀取Regex設定
-            const regexSettings = context.extensionSettings.regex;
+            console.log(DEBUG_PREFIX, 'Searching for regex settings...');
             
-            if (!regexSettings || !Array.isArray(regexSettings)) {
-                toastr.info('沒有找到Regex規則', 'Chinese Converter');
+            // 嘗試多個可能的路徑
+            let regexSettings = null;
+            let foundPath = '';
+            
+            // 路徑1: context.extensionSettings.regex
+            if (context.extensionSettings && context.extensionSettings.regex) {
+                regexSettings = context.extensionSettings.regex;
+                foundPath = 'extensionSettings.regex';
+            }
+            // 路徑2: context.extensionSettings['regex']
+            else if (context.extensionSettings && context.extensionSettings['regex']) {
+                regexSettings = context.extensionSettings['regex'];
+                foundPath = 'extensionSettings["regex"]';
+            }
+            // 路徑3: context.extensionSettings.Regex
+            else if (context.extensionSettings && context.extensionSettings.Regex) {
+                regexSettings = context.extensionSettings.Regex;
+                foundPath = 'extensionSettings.Regex';
+            }
+            // 路徑4: 直接在context下
+            else if (context.regex) {
+                regexSettings = context.regex;
+                foundPath = 'context.regex';
+            }
+            // 找不到：顯示所有可能的keys
+            else {
+                const extKeys = context.extensionSettings ? Object.keys(context.extensionSettings) : [];
+                const ctxKeys = Object.keys(context).slice(0, 20); // 只顯示前20個
+                
+                const debugInfo = `找不到Regex設定！\n\n可用的extensionSettings keys:\n${extKeys.join(', ')}\n\n可用的context keys（前20個）:\n${ctxKeys.join(', ')}`;
+                
+                alert(debugInfo);
+                toastr.error('找不到Regex設定！請截圖alert內容給我', 'Chinese Converter', { timeOut: 10000 });
+                return;
+            }
+            
+            if (!Array.isArray(regexSettings)) {
+                alert(`找到Regex設定但格式不正確！\n\n路徑: ${foundPath}\n類型: ${typeof regexSettings}\n內容: ${JSON.stringify(regexSettings).substring(0, 500)}`);
+                toastr.error('Regex設定格式不正確！請截圖alert內容給我', 'Chinese Converter', { timeOut: 10000 });
+                return;
+            }
+
+            console.log(DEBUG_PREFIX, `Found ${regexSettings.length} regex rules at ${foundPath}`);
+            
+            if (regexSettings.length === 0) {
+                toastr.info('沒有找到任何Regex規則', 'Chinese Converter');
                 return;
             }
 
             let convertedCount = 0;
 
             // 遍歷所有Regex規則
-            regexSettings.forEach(rule => {
+            regexSettings.forEach((rule, index) => {
                 if (rule.replaceString && typeof rule.replaceString === 'string') {
                     const original = rule.replaceString;
                     const converted = convertText(original);
@@ -225,15 +268,23 @@
             // 保存設定
             await context.saveSettingsDebounced();
 
-            toastr.success(
-                `已轉換 ${convertedCount} 個Regex規則！請重新整理頁面讓變更生效`,
-                'Chinese Converter',
-                { timeOut: 5000 }
-            );
+            if (convertedCount > 0) {
+                toastr.success(
+                    `成功轉換 ${convertedCount} 個Regex規則！\n位置: ${foundPath}\n請重新整理頁面讓變更生效`,
+                    'Chinese Converter',
+                    { timeOut: 5000 }
+                );
+            } else {
+                toastr.info(
+                    `掃描了 ${regexSettings.length} 個Regex規則，沒有找到需要轉換的簡體字`,
+                    'Chinese Converter'
+                );
+            }
             
             console.log(DEBUG_PREFIX, `Converted ${convertedCount} regex rules`);
         } catch (error) {
             console.error(DEBUG_PREFIX, 'Failed to convert regex rules:', error);
+            alert(`轉換失敗！\n\n錯誤: ${error.message}\n\n請截圖這個訊息給我`);
             toastr.error(`轉換失敗: ${error.message}`, 'Chinese Converter');
         }
     }
