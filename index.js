@@ -175,15 +175,12 @@
                             <input type="checkbox" id="chinese-converter-auto" ${extensionSettings.autoConvert ? 'checked' : ''} />
                             <span>自動轉換API請求</span>
                         </label>
-                        <div>
+                        <div style="margin-top: 10px;">
                             <label for="chinese-converter-type">轉換方向：</label>
                             <select id="chinese-converter-type">
                                 <option value="s2t" ${extensionSettings.conversionType === 's2t' ? 'selected' : ''}>簡體 → 繁體</option>
                                 <option value="t2s" ${extensionSettings.conversionType === 't2s' ? 'selected' : ''}>繁體 → 簡體</option>
                             </select>
-                        </div>
-                        <div style="margin-top: 10px;">
-                            <button id="chinese-converter-convert-display" class="menu_button">轉換畫面上的對話</button>
                         </div>
                         <small style="display: block; margin-top: 10px; opacity: 0.7;">
                             💡 開啟後，每次送給AI前都會自動轉換！<br>
@@ -218,45 +215,7 @@
             saveSettings();
         });
 
-        document.getElementById('chinese-converter-convert-display')?.addEventListener('click', () => {
-            convertDisplayedMessages();
-        });
-
         console.log(DEBUG_PREFIX, 'UI created successfully');
-    }
-
-    // 轉換畫面上已經顯示的對話（視覺上的轉換）
-    function convertDisplayedMessages() {
-        try {
-            if (!converter) {
-                toastr.error('轉換器未初始化', 'Chinese Converter');
-                return;
-            }
-
-            // 直接操作DOM（從之前學到的）
-            const messageElements = document.querySelectorAll('#chat > div.mes > div.mes_block > div.mes_text');
-            
-            if (messageElements.length === 0) {
-                toastr.info('沒有對話可以轉換', 'Chinese Converter');
-                return;
-            }
-            
-            let count = 0;
-            messageElements.forEach((element) => {
-                const originalHTML = element.innerHTML;
-                const convertedHTML = convertText(originalHTML);
-                
-                if (originalHTML !== convertedHTML) {
-                    element.innerHTML = convertedHTML;
-                    count++;
-                }
-            });
-
-            toastr.success(`已轉換 ${count} 條訊息`, 'Chinese Converter');
-        } catch (error) {
-            console.error(DEBUG_PREFIX, 'Failed to convert display:', error);
-            toastr.error(`轉換失敗: ${error.message}`, 'Chinese Converter');
-        }
     }
 
     // 儲存設定
