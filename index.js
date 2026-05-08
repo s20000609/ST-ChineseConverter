@@ -78,60 +78,52 @@
         }
     }
 
-    // 轉換當前對話中的所有消息
-    function convertCurrentChat() {
+    // 轉換當前對話中的所有消息（使用TauriTavern API + DOM操作）
+    async function convertCurrentChat() {
         try {
-            const context = SillyTavern.getContext();
-            const chat = context.chat;
+            // 等待TauriTavern API就緒
+            await (window.__TAURITAVERN__?.ready ?? window.__TAURITAVERN_MAIN_READY__);
+            
+            if (!window.__TAURITAVERN__) {
+                throw new Error('TauriTavern API未就緒');
+            }
 
-            if (!chat || chat.length === 0) {
+            const api = window.__TAURITAVERN__.api.chat;
+            const handle = api.current.handle();
+
+            // 使用TauriTavern的searchMessages取得所有訊息
+            const hits = await handle.searchMessages({
+                query: '', // 空查詢返回所有訊息
+                limit: 10000,
+                filters: {}
+            });
+
+            if (!hits || hits.length === 0) {
                 toastr.info('沒有對話可以轉換', 'Chinese Converter');
                 return;
             }
 
             let convertedCount = 0;
 
-            chat.forEach((message, index) => {
-                if (message.mes) {
-                    const originalText = message.mes;
-                    const convertedText = convertText(originalText);
-                    
-                    if (originalText !== convertedText) {
-                        message.mes = convertedText;
-                        convertedCount++;
-                    }
-                }
-            });
-
-            // 強制更新DOM - 直接修改所有訊息元素
+            // 直接操作DOM更新顯示
             const messageElements = document.querySelectorAll('.mes_text');
-            messageElements.forEach((element, index) => {
-                if (chat[index] && chat[index].mes) {
-                    element.innerHTML = chat[index].mes;
+            
+            messageElements.forEach((element) => {
+                const originalText = element.textContent || element.innerText;
+                const convertedText = convertText(originalText);
+                
+                if (originalText !== convertedText) {
+                    // 直接更新DOM顯示
+                    element.textContent = convertedText;
+                    convertedCount++;
                 }
             });
-
-            // 嘗試重新渲染對話（如果API存在）
-            if (typeof context.reloadCurrentChat === 'function') {
-                context.reloadCurrentChat();
-            } else if (typeof context.printMessages === 'function') {
-                context.printMessages();
-            } else {
-                // 觸發手動重繪
-                const chatContainer = document.getElementById('chat');
-                if (chatContainer) {
-                    chatContainer.style.display = 'none';
-                    setTimeout(() => {
-                        chatContainer.style.display = '';
-                    }, 10);
-                }
-            }
 
             toastr.success(`已轉換 ${convertedCount} 條訊息`, 'Chinese Converter');
-            console.log(DEBUG_PREFIX, `Converted ${convertedCount} messages`);
+            console.log(DEBUG_PREFIX, `Converted ${convertedCount} messages using TauriTavern API`);
         } catch (error) {
             console.error(DEBUG_PREFIX, 'Failed to convert chat:', error);
-            toastr.error('轉換失敗', 'Chinese Converter');
+            toastr.error(`轉換失敗: ${error.message}`, 'Chinese Converter');
         }
     }
 
