@@ -81,6 +81,25 @@
     // 轉換當前對話中的所有消息（使用TauriTavern API + DOM操作）
     async function convertCurrentChat() {
         try {
+            // **關鍵檢查：確保OpenCC和converter已就緒**
+            if (typeof OpenCC === 'undefined') {
+                toastr.error('OpenCC未載入！請重啟擴展', 'Chinese Converter');
+                console.error(DEBUG_PREFIX, 'OpenCC library not loaded!');
+                return;
+            }
+
+            if (!converter) {
+                console.log(DEBUG_PREFIX, 'Converter not initialized, initializing now...');
+                initConverter();
+                if (!converter) {
+                    toastr.error('轉換器初始化失敗', 'Chinese Converter');
+                    console.error(DEBUG_PREFIX, 'Converter initialization failed!');
+                    return;
+                }
+            }
+
+            console.log(DEBUG_PREFIX, 'OpenCC and converter ready, starting conversion...');
+            
             // 等待TauriTavern API就緒
             await (window.__TAURITAVERN__?.ready ?? window.__TAURITAVERN_MAIN_READY__);
             
@@ -107,6 +126,8 @@
 
             // 使用正確的DOM路徑（從ST-Prompt-Template學來的）
             const messageElements = document.querySelectorAll('#chat > div.mes > div.mes_block > div.mes_text');
+            
+            console.log(DEBUG_PREFIX, `Found ${messageElements.length} message elements`);
             
             messageElements.forEach((element) => {
                 const originalHTML = element.innerHTML;
