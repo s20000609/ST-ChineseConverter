@@ -133,12 +133,12 @@
         return obj;
     }
 
-    // Hook原生fetch（攔截所有API請求和回應）
+    // Hook原生fetch（只轉換請求，不轉換回應）
     function hookFetch() {
         const originalFetch = window.fetch;
         
         window.fetch = async function(url, options) {
-            // === 發送前轉換（請求payload）- 安全版 ===
+            // === 只轉換請求（發送給API）===
             if (options && options.method === 'POST' && extensionSettings.enabled && extensionSettings.autoConvert) {
                 try {
                     if (options.body) {
@@ -160,7 +160,7 @@
                             // 只轉換messages內容，不轉換路徑/ID/metadata
                             body = convertMessagesOnly(body);
                             options.body = JSON.stringify(body);
-                            console.log(DEBUG_PREFIX, 'Request converted safely');
+                            console.log(DEBUG_PREFIX, 'Request converted → AI will see 繁體 → AI will respond 繁體!');
                         }
                     }
                 } catch (error) {
@@ -168,37 +168,13 @@
                 }
             }
             
-            // 執行原始fetch
-            const response = await originalFetch.call(this, url, options);
-            
-            // === 回應後轉換（AI回應）===
-            if (extensionSettings.enabled && extensionSettings.autoConvert) {
-                const contentType = response.headers.get('content-type');
-                
-                // 只處理JSON回應
-                if (contentType && contentType.includes('application/json')) {
-                    try {
-                        const responseData = await response.json();
-                        // 回應可以深度轉換（AI生成的內容）
-                        const convertedData = deepConvertObject(responseData);
-                        
-                        console.log(DEBUG_PREFIX, 'Response converted');
-                        return new Response(JSON.stringify(convertedData), {
-                            status: response.status,
-                            statusText: response.statusText,
-                            headers: response.headers
-                        });
-                    } catch (error) {
-                        console.error(DEBUG_PREFIX, 'Error converting response:', error);
-                        return originalFetch.call(this, url, options);
-                    }
-                }
-            }
-            
-            return response;
+            // 執行原始fetch，不轉換回應
+            // 因為AI已經回繁體了，不需要再轉換
+            // 轉換回應會破壞metadata（檔案路徑、ID等）
+            return originalFetch.call(this, url, options);
         };
         
-        console.log(DEBUG_PREFIX, 'Fetch hook installed - safe conversion mode!');
+        console.log(DEBUG_PREFIX, 'Fetch hook installed - request-only conversion (safe mode)!');
     }
 
     // === UI相關 ===
