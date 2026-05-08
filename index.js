@@ -110,53 +110,73 @@
         return obj;
     }
 
-    // Hook原生fetch（攔截所有API請求）
+    // Hook原生fetch（攔截所有API請求和回應）
     function hookFetch() {
         const originalFetch = window.fetch;
         
         window.fetch = async function(url, options) {
-            // 只處理POST請求（通常是API呼叫）
+            // === 發送前轉換（請求payload） ===
             if (options && options.method === 'POST' && extensionSettings.enabled && extensionSettings.autoConvert) {
                 try {
-                    // 解析請求body
                     if (options.body) {
                         let body;
                         
-                        // 如果是字串，解析為JSON
                         if (typeof options.body === 'string') {
                             try {
                                 body = JSON.parse(options.body);
                             } catch (e) {
-                                // 不是JSON，跳過
                                 return originalFetch.call(this, url, options);
                             }
                         } else {
                             body = options.body;
                         }
                         
-                        // 檢查是否是LLM API請求（有messages陣列）
+                        // 檢查是否是LLM API請求
                         if (body && body.messages && Array.isArray(body.messages)) {
-                            console.log(DEBUG_PREFIX, 'Intercepting API request, converting messages...');
-                            
-                            // 轉換整個payload！
+                            console.log(DEBUG_PREFIX, 'Converting request payload...');
                             body = deepConvertObject(body);
-                            
-                            // 更新請求body
                             options.body = JSON.stringify(body);
-                            
-                            console.log(DEBUG_PREFIX, 'Messages converted and sent to API');
+                            console.log(DEBUG_PREFIX, 'Request converted');
                         }
                     }
                 } catch (error) {
-                    console.error(DEBUG_PREFIX, 'Error in fetch hook:', error);
+                    console.error(DEBUG_PREFIX, 'Error converting request:', error);
                 }
             }
             
             // 執行原始fetch
-            return originalFetch.call(this, url, options);
+            const response = await originalFetch.call(this, url, options);
+            
+            // === 回應後轉換（AI回應）- 優化版 ===
+            if (extensionSettings.enabled && extensionSettings.autoConvert) {
+                const contentType = response.headers.get('content-type');
+                
+                // 只處理JSON回應
+                if (contentType && contentType.includes('application/json')) {
+                    try {
+                        // 直接讀取並轉換，不用clone（更高效！）
+                        const responseData = await response.json();
+                        const convertedData = deepConvertObject(responseData);
+                        
+                        // 創建新的Response返回
+                        console.log(DEBUG_PREFIX, 'Response converted');
+                        return new Response(JSON.stringify(convertedData), {
+                            status: response.status,
+                            statusText: response.statusText,
+                            headers: response.headers
+                        });
+                    } catch (error) {
+                        console.error(DEBUG_PREFIX, 'Error converting response:', error);
+                        // 發生錯誤，返回原始response（但已經被讀取了，需要重新fetch）
+                        return originalFetch.call(this, url, options);
+                    }
+                }
+            }
+            
+            return response;
         };
         
-        console.log(DEBUG_PREFIX, 'Fetch hook installed - will convert all API requests!');
+        console.log(DEBUG_PREFIX, 'Fetch hook installed - optimized for performance!');
     }
 
     // === UI相關 ===
