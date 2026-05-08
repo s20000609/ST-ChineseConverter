@@ -78,7 +78,7 @@
         }
     }
 
-    // 轉換當前對話中的所有消息（使用TauriTavern API + DOM操作）
+    // 轉換當前對話中的所有消息（直接操作DOM）
     async function convertCurrentChat() {
         try {
             // **關鍵檢查：確保OpenCC和converter已就緒**
@@ -100,49 +100,32 @@
 
             console.log(DEBUG_PREFIX, 'OpenCC and converter ready, starting conversion...');
             
-            // 等待TauriTavern API就緒
-            await (window.__TAURITAVERN__?.ready ?? window.__TAURITAVERN_MAIN_READY__);
-            
-            if (!window.__TAURITAVERN__) {
-                throw new Error('TauriTavern API未就緒');
-            }
-
-            const api = window.__TAURITAVERN__.api.chat;
-            const handle = api.current.handle();
-
-            // 使用TauriTavern的searchMessages取得所有訊息
-            const hits = await handle.searchMessages({
-                query: '', // 空查詢返回所有訊息
-                limit: 10000,
-                filters: {}
-            });
-
-            if (!hits || hits.length === 0) {
-                toastr.info('沒有對話可以轉換', 'Chinese Converter');
-                return;
-            }
-
             let convertedCount = 0;
 
             // 使用正確的DOM路徑（從ST-Prompt-Template學來的）
+            // 直接操作已經在畫面上的訊息，不需要API
             const messageElements = document.querySelectorAll('#chat > div.mes > div.mes_block > div.mes_text');
             
             console.log(DEBUG_PREFIX, `Found ${messageElements.length} message elements`);
             
+            if (messageElements.length === 0) {
+                toastr.info('沒有對話可以轉換', 'Chinese Converter');
+                return;
+            }
+            
             messageElements.forEach((element) => {
-                const originalHTML = element.innerHTML;
                 const originalText = element.textContent || element.innerText;
                 const convertedText = convertText(originalText);
                 
                 if (originalText !== convertedText) {
-                    // 直接寫入HTML到DOM（跟work的插件一樣的方式）
-                    element.innerHTML = convertedText;
+                    // 直接寫入轉換後的文字到DOM
+                    element.textContent = convertedText;
                     convertedCount++;
                 }
             });
 
             toastr.success(`已轉換 ${convertedCount} 條訊息`, 'Chinese Converter');
-            console.log(DEBUG_PREFIX, `Converted ${convertedCount} messages using TauriTavern API`);
+            console.log(DEBUG_PREFIX, `Converted ${convertedCount} messages`);
         } catch (error) {
             console.error(DEBUG_PREFIX, 'Failed to convert chat:', error);
             toastr.error(`轉換失敗: ${error.message}`, 'Chinese Converter');
