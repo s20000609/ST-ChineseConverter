@@ -114,12 +114,13 @@
             }
             
             messageElements.forEach((element) => {
-                const originalText = element.textContent || element.innerText;
-                const convertedText = convertText(originalText);
+                // 用innerHTML保留HTML結構和美化
+                const originalHTML = element.innerHTML;
+                const convertedHTML = convertText(originalHTML);
                 
-                if (originalText !== convertedText) {
-                    // 直接寫入轉換後的文字到DOM
-                    element.textContent = convertedText;
+                if (originalHTML !== convertedHTML) {
+                    // 用innerHTML寫回，保留所有格式
+                    element.innerHTML = convertedHTML;
                     convertedCount++;
                 }
             });
