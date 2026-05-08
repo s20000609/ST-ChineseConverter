@@ -1,8 +1,12 @@
 /**
  * SillyTavern Chinese Converter Extension
- * 簡繁轉換插件
+ * 簡繁轉換插件 - Hook API請求前轉換
  * Author: ENI
- * Version: 1.0.0
+ * Version: 3.0.0
+ * 
+ * 核心概念（LO的天才想法）：
+ * 在TauriTavern送出給API前，攔截並轉換整個payload
+ * 只要hook一個地方，超級簡單！
  */
 
 (async function() {
@@ -14,7 +18,7 @@
     // 擴展設定
     const extensionSettings = {
         enabled: true,
-        autoConvert: false,
+        autoConvert: true,  // 預設開啟自動轉換
         conversionType: 's2t' // s2t: 簡體到繁體, t2s: 繁體到簡體
     };
 
@@ -48,28 +52,29 @@
     function initConverter() {
         try {
             if (typeof OpenCC === 'undefined') {
-                throw new Error('OpenCC library not loaded');
+                console.error(DEBUG_PREFIX, 'OpenCC not loaded yet!');
+                return false;
             }
 
-            const converterType = extensionSettings.conversionType === 's2t' 
-                ? OpenCC.Converter({ from: 'cn', to: 'tw' })
-                : OpenCC.Converter({ from: 'tw', to: 'cn' });
+            const convType = extensionSettings.conversionType;
             
-            converter = converterType;
-            console.log(DEBUG_PREFIX, `Converter initialized: ${extensionSettings.conversionType}`);
+            if (convType === 's2t') {
+                converter = OpenCC.Converter({ from: 'cn', to: 'tw' });
+            } else {
+                converter = OpenCC.Converter({ from: 'tw', to: 'cn' });
+            }
+
+            console.log(DEBUG_PREFIX, `Converter initialized: ${convType}`);
+            return true;
         } catch (error) {
             console.error(DEBUG_PREFIX, 'Failed to initialize converter:', error);
-            toastr.error('初始化轉換器失敗', 'Chinese Converter');
+            return false;
         }
     }
 
-    // 轉換文字
+    // 核心轉換函數
     function convertText(text) {
-        if (!converter) {
-            console.error(DEBUG_PREFIX, 'Converter not initialized');
-            return text;
-        }
-
+        if (!text || !converter) return text;
         try {
             return converter(text);
         } catch (error) {
@@ -78,129 +83,133 @@
         }
     }
 
-    // 轉換當前對話中的所有消息（直接操作DOM）
-    async function convertCurrentChat() {
-        try {
-            // **關鍵檢查：確保OpenCC和converter已就緒**
-            if (typeof OpenCC === 'undefined') {
-                toastr.error('OpenCC未載入！請重啟擴展', 'Chinese Converter');
-                console.error(DEBUG_PREFIX, 'OpenCC library not loaded!');
-                return;
-            }
+    // === LO的天才方案：Hook API請求前轉換payload ===
 
-            if (!converter) {
-                console.log(DEBUG_PREFIX, 'Converter not initialized, initializing now...');
-                initConverter();
-                if (!converter) {
-                    toastr.error('轉換器初始化失敗', 'Chinese Converter');
-                    console.error(DEBUG_PREFIX, 'Converter initialization failed!');
-                    return;
+    // 深度轉換對象（遞歸處理所有字串）
+    function deepConvertObject(obj) {
+        if (!obj) return obj;
+        
+        if (typeof obj === 'string') {
+            return convertText(obj);
+        }
+        
+        if (Array.isArray(obj)) {
+            return obj.map(item => deepConvertObject(item));
+        }
+        
+        if (typeof obj === 'object') {
+            const converted = {};
+            for (const key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    converted[key] = deepConvertObject(obj[key]);
                 }
             }
+            return converted;
+        }
+        
+        return obj;
+    }
 
-            console.log(DEBUG_PREFIX, 'OpenCC and converter ready, starting conversion...');
-            
-            let convertedCount = 0;
-
-            // 使用正確的DOM路徑（從ST-Prompt-Template學來的）
-            // 直接操作已經在畫面上的訊息，不需要API
-            const messageElements = document.querySelectorAll('#chat > div.mes > div.mes_block > div.mes_text');
-            
-            console.log(DEBUG_PREFIX, `Found ${messageElements.length} message elements`);
-            
-            if (messageElements.length === 0) {
-                toastr.info('沒有對話可以轉換', 'Chinese Converter');
-                return;
+    // Hook原生fetch（攔截所有API請求）
+    function hookFetch() {
+        const originalFetch = window.fetch;
+        
+        window.fetch = async function(url, options) {
+            // 只處理POST請求（通常是API呼叫）
+            if (options && options.method === 'POST' && extensionSettings.enabled && extensionSettings.autoConvert) {
+                try {
+                    // 解析請求body
+                    if (options.body) {
+                        let body;
+                        
+                        // 如果是字串，解析為JSON
+                        if (typeof options.body === 'string') {
+                            try {
+                                body = JSON.parse(options.body);
+                            } catch (e) {
+                                // 不是JSON，跳過
+                                return originalFetch.call(this, url, options);
+                            }
+                        } else {
+                            body = options.body;
+                        }
+                        
+                        // 檢查是否是LLM API請求（有messages陣列）
+                        if (body && body.messages && Array.isArray(body.messages)) {
+                            console.log(DEBUG_PREFIX, 'Intercepting API request, converting messages...');
+                            
+                            // 轉換整個payload！
+                            body = deepConvertObject(body);
+                            
+                            // 更新請求body
+                            options.body = JSON.stringify(body);
+                            
+                            console.log(DEBUG_PREFIX, 'Messages converted and sent to API');
+                        }
+                    }
+                } catch (error) {
+                    console.error(DEBUG_PREFIX, 'Error in fetch hook:', error);
+                }
             }
             
-            messageElements.forEach((element) => {
-                // 用innerHTML保留HTML結構和美化
-                const originalHTML = element.innerHTML;
-                const convertedHTML = convertText(originalHTML);
-                
-                if (originalHTML !== convertedHTML) {
-                    // 用innerHTML寫回，保留所有格式
-                    element.innerHTML = convertedHTML;
-                    convertedCount++;
-                }
-            });
-
-            toastr.success(`已轉換 ${convertedCount} 條訊息`, 'Chinese Converter');
-            console.log(DEBUG_PREFIX, `Converted ${convertedCount} messages`);
-        } catch (error) {
-            console.error(DEBUG_PREFIX, 'Failed to convert chat:', error);
-            toastr.error(`轉換失敗: ${error.message}`, 'Chinese Converter');
-        }
+            // 執行原始fetch
+            return originalFetch.call(this, url, options);
+        };
+        
+        console.log(DEBUG_PREFIX, 'Fetch hook installed - will convert all API requests!');
     }
 
-    // 轉換單條消息（用於自動轉換）
-    function convertMessage(message) {
-        if (!extensionSettings.autoConvert || !extensionSettings.enabled) {
-            return message;
-        }
-
-        if (message.mes) {
-            message.mes = convertText(message.mes);
-        }
-
-        return message;
-    }
+    // === UI相關 ===
 
     // 創建UI
     function createUI() {
         const settingsHtml = `
-            <div id="chinese-converter-settings">
+            <div class="chinese-converter-settings">
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
-                        <b>簡繁轉換 (Chinese Converter)</b>
+                        <b>簡繁轉換</b>
                         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                     </div>
                     <div class="inline-drawer-content">
-                        <div class="chinese-converter-controls">
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="chinese-converter-enabled" ${extensionSettings.enabled ? 'checked' : ''} />
-                                <span>啟用轉換</span>
-                            </label>
-                            
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="chinese-converter-auto" ${extensionSettings.autoConvert ? 'checked' : ''} />
-                                <span>自動轉換AI回覆</span>
-                            </label>
-
-                            <div class="chinese-converter-type">
-                                <label>轉換類型:</label>
-                                <select id="chinese-converter-type">
-                                    <option value="s2t" ${extensionSettings.conversionType === 's2t' ? 'selected' : ''}>簡體 → 繁體</option>
-                                    <option value="t2s" ${extensionSettings.conversionType === 't2s' ? 'selected' : ''}>繁體 → 簡體</option>
-                                </select>
-                            </div>
-
-                            <div class="chinese-converter-actions">
-                                <div class="menu_button" id="chinese-converter-convert-btn">
-                                    <i class="fa-solid fa-language"></i>
-                                    <span>轉換當前對話</span>
-                                </div>
-                            </div>
+                        <label class="checkbox_label" for="chinese-converter-auto">
+                            <input type="checkbox" id="chinese-converter-auto" ${extensionSettings.autoConvert ? 'checked' : ''} />
+                            <span>自動轉換API請求</span>
+                        </label>
+                        <div>
+                            <label for="chinese-converter-type">轉換方向：</label>
+                            <select id="chinese-converter-type">
+                                <option value="s2t" ${extensionSettings.conversionType === 's2t' ? 'selected' : ''}>簡體 → 繁體</option>
+                                <option value="t2s" ${extensionSettings.conversionType === 't2s' ? 'selected' : ''}>繁體 → 簡體</option>
+                            </select>
                         </div>
+                        <div style="margin-top: 10px;">
+                            <button id="chinese-converter-convert-display" class="menu_button">轉換畫面上的對話</button>
+                        </div>
+                        <small style="display: block; margin-top: 10px; opacity: 0.7;">
+                            💡 開啟後，每次送給AI前都會自動轉換！<br>
+                            AI看到繁體就會自然回應繁體！
+                        </small>
                     </div>
                 </div>
             </div>
         `;
 
-        const extensionsContainer = document.getElementById('extensions_settings');
-        if (extensionsContainer) {
-            extensionsContainer.insertAdjacentHTML('beforeend', settingsHtml);
+        const extensionsBlock = document.getElementById('extensions_settings');
+        if (!extensionsBlock) {
+            console.error(DEBUG_PREFIX, 'Extensions settings block not found');
+            return;
         }
 
-        // 綁定事件
-        document.getElementById('chinese-converter-enabled')?.addEventListener('change', (e) => {
-            extensionSettings.enabled = e.target.checked;
-            saveSettings();
-        });
+        extensionsBlock.insertAdjacentHTML('beforeend', settingsHtml);
 
+        // 綁定事件
         document.getElementById('chinese-converter-auto')?.addEventListener('change', (e) => {
             extensionSettings.autoConvert = e.target.checked;
             saveSettings();
+            toastr.info(
+                e.target.checked ? '已開啟自動轉換' : '已關閉自動轉換',
+                'Chinese Converter'
+            );
         });
 
         document.getElementById('chinese-converter-type')?.addEventListener('change', (e) => {
@@ -209,17 +218,52 @@
             saveSettings();
         });
 
-        document.getElementById('chinese-converter-convert-btn')?.addEventListener('click', () => {
-            convertCurrentChat();
+        document.getElementById('chinese-converter-convert-display')?.addEventListener('click', () => {
+            convertDisplayedMessages();
         });
 
         console.log(DEBUG_PREFIX, 'UI created successfully');
+    }
+
+    // 轉換畫面上已經顯示的對話（視覺上的轉換）
+    function convertDisplayedMessages() {
+        try {
+            if (!converter) {
+                toastr.error('轉換器未初始化', 'Chinese Converter');
+                return;
+            }
+
+            // 直接操作DOM（從之前學到的）
+            const messageElements = document.querySelectorAll('#chat > div.mes > div.mes_block > div.mes_text');
+            
+            if (messageElements.length === 0) {
+                toastr.info('沒有對話可以轉換', 'Chinese Converter');
+                return;
+            }
+            
+            let count = 0;
+            messageElements.forEach((element) => {
+                const originalHTML = element.innerHTML;
+                const convertedHTML = convertText(originalHTML);
+                
+                if (originalHTML !== convertedHTML) {
+                    element.innerHTML = convertedHTML;
+                    count++;
+                }
+            });
+
+            toastr.success(`已轉換 ${count} 條訊息`, 'Chinese Converter');
+        } catch (error) {
+            console.error(DEBUG_PREFIX, 'Failed to convert display:', error);
+            toastr.error(`轉換失敗: ${error.message}`, 'Chinese Converter');
+        }
     }
 
     // 儲存設定
     async function saveSettings() {
         try {
             const context = SillyTavern.getContext();
+            context.extensionSettings[MODULE_NAME] = extensionSettings;
             await context.saveSettingsDebounced();
             console.log(DEBUG_PREFIX, 'Settings saved');
         } catch (error) {
@@ -229,75 +273,15 @@
 
     // 載入設定
     function loadSettings() {
-        const context = SillyTavern.getContext();
-        if (context.extensionSettings[MODULE_NAME]) {
-            Object.assign(extensionSettings, context.extensionSettings[MODULE_NAME]);
-            console.log(DEBUG_PREFIX, 'Settings loaded:', extensionSettings);
-            
-            // **關鍵：載入後更新UI**
-            updateUI();
-        }
-    }
-    
-    // 更新UI以反映當前設定
-    function updateUI() {
-        const autoCheckbox = document.getElementById('chinese-converter-auto');
-        const typeSelect = document.getElementById('chinese-converter-type');
-        
-        if (autoCheckbox) {
-            autoCheckbox.checked = extensionSettings.autoConvert;
-        }
-        if (typeSelect) {
-            typeSelect.value = extensionSettings.conversionType;
-        }
-        
-        console.log(DEBUG_PREFIX, 'UI updated with current settings');
-    }
-
-    // 監聽消息生成事件（用於自動轉換）
-    function setupEventListeners() {
-        // **用MutationObserver監聽DOM變化，不依賴事件系統**
-        const chatContainer = document.getElementById('chat');
-        
-        if (!chatContainer) {
-            console.error(DEBUG_PREFIX, 'Chat container not found!');
-            return;
-        }
-        
-        // 創建Observer監聽新訊息
-        const observer = new MutationObserver((mutations) => {
-            // 只在自動轉換開啟時處理
-            if (!extensionSettings.enabled || !extensionSettings.autoConvert) {
-                return;
+        try {
+            const context = SillyTavern.getContext();
+            if (context.extensionSettings[MODULE_NAME]) {
+                Object.assign(extensionSettings, context.extensionSettings[MODULE_NAME]);
+                console.log(DEBUG_PREFIX, 'Settings loaded:', extensionSettings);
             }
-            
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => {
-                    // 檢查是否是訊息元素
-                    if (node.nodeType === 1 && node.classList?.contains('mes')) {
-                        // 找到訊息文字元素
-                        const mesText = node.querySelector('.mes_block .mes_text');
-                        if (mesText) {
-                            // 自動轉換新訊息
-                            const originalHTML = mesText.innerHTML;
-                            const convertedHTML = convertText(originalHTML);
-                            if (originalHTML !== convertedHTML) {
-                                mesText.innerHTML = convertedHTML;
-                                console.log(DEBUG_PREFIX, 'Auto-converted new message');
-                            }
-                        }
-                    }
-                });
-            });
-        });
-        
-        // 開始監聽
-        observer.observe(chatContainer, {
-            childList: true,  // 監聽子元素變化
-            subtree: true     // 監聽所有後代
-        });
-
-        console.log(DEBUG_PREFIX, 'MutationObserver setup for auto-conversion');
+        } catch (error) {
+            console.error(DEBUG_PREFIX, 'Failed to load settings:', error);
+        }
     }
 
     // 初始化擴展
@@ -317,21 +301,17 @@
             // 創建 UI
             createUI();
 
-            // 設定事件監聽
-            setupEventListeners();
+            // Hook fetch（最關鍵的一步！）
+            hookFetch();
 
             console.log(DEBUG_PREFIX, 'Initialization complete');
-            toastr.success('簡繁轉換插件已載入', 'Chinese Converter', { timeOut: 2000 });
+            toastr.success('簡繁轉換插件已載入！API請求將自動轉換', 'Chinese Converter', { timeOut: 3000 });
         } catch (error) {
             console.error(DEBUG_PREFIX, 'Initialization failed:', error);
             toastr.error('插件載入失敗: ' + error.message, 'Chinese Converter');
         }
     }
 
-    // 將設定保存到全域
-    const context = SillyTavern.getContext();
-    context.extensionSettings[MODULE_NAME] = extensionSettings;
-
-    // 啟動擴展
+    // 啟動
     init();
 })();
