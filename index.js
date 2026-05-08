@@ -105,16 +105,17 @@
 
             let convertedCount = 0;
 
-            // 直接操作DOM更新顯示
-            const messageElements = document.querySelectorAll('.mes_text');
+            // 使用正確的DOM路徑（從ST-Prompt-Template學來的）
+            const messageElements = document.querySelectorAll('#chat > div.mes > div.mes_block > div.mes_text');
             
             messageElements.forEach((element) => {
+                const originalHTML = element.innerHTML;
                 const originalText = element.textContent || element.innerText;
                 const convertedText = convertText(originalText);
                 
                 if (originalText !== convertedText) {
-                    // 直接更新DOM顯示
-                    element.textContent = convertedText;
+                    // 直接寫入HTML到DOM（跟work的插件一樣的方式）
+                    element.innerHTML = convertedText;
                     convertedCount++;
                 }
             });
