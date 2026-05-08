@@ -103,8 +103,29 @@
                 }
             });
 
-            // 重新渲染對話
-            context.reloadCurrentChat();
+            // 強制更新DOM - 直接修改所有訊息元素
+            const messageElements = document.querySelectorAll('.mes_text');
+            messageElements.forEach((element, index) => {
+                if (chat[index] && chat[index].mes) {
+                    element.innerHTML = chat[index].mes;
+                }
+            });
+
+            // 嘗試重新渲染對話（如果API存在）
+            if (typeof context.reloadCurrentChat === 'function') {
+                context.reloadCurrentChat();
+            } else if (typeof context.printMessages === 'function') {
+                context.printMessages();
+            } else {
+                // 觸發手動重繪
+                const chatContainer = document.getElementById('chat');
+                if (chatContainer) {
+                    chatContainer.style.display = 'none';
+                    setTimeout(() => {
+                        chatContainer.style.display = '';
+                    }, 10);
+                }
+            }
 
             toastr.success(`已轉換 ${convertedCount} 條訊息`, 'Chinese Converter');
             console.log(DEBUG_PREFIX, `Converted ${convertedCount} messages`);
