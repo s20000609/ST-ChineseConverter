@@ -85,7 +85,30 @@
 
     // === LO的天才方案：Hook API請求前轉換payload ===
 
-    // 深度轉換對象（遞歸處理所有字串）
+    // 安全的選擇性轉換（只轉換AI看到的內容，不破壞metadata）
+    function convertMessagesOnly(payload) {
+        if (!payload || !payload.messages || !Array.isArray(payload.messages)) {
+            return payload;
+        }
+        
+        // 創建深拷貝，避免修改原始payload
+        const converted = JSON.parse(JSON.stringify(payload));
+        
+        // 只轉換messages陣列裡的content欄位
+        converted.messages = converted.messages.map(msg => {
+            if (msg.content && typeof msg.content === 'string') {
+                return {
+                    ...msg,
+                    content: convertText(msg.content)
+                };
+            }
+            return msg;
+        });
+        
+        return converted;
+    }
+
+    // 深度轉換對象（只用於回應，因為我們不知道回應的結構）
     function deepConvertObject(obj) {
         if (!obj) return obj;
         
@@ -115,7 +138,7 @@
         const originalFetch = window.fetch;
         
         window.fetch = async function(url, options) {
-            // === 發送前轉換（請求payload） ===
+            // === 發送前轉換（請求payload）- 安全版 ===
             if (options && options.method === 'POST' && extensionSettings.enabled && extensionSettings.autoConvert) {
                 try {
                     if (options.body) {
@@ -133,10 +156,11 @@
                         
                         // 檢查是否是LLM API請求
                         if (body && body.messages && Array.isArray(body.messages)) {
-                            console.log(DEBUG_PREFIX, 'Converting request payload...');
-                            body = deepConvertObject(body);
+                            console.log(DEBUG_PREFIX, 'Converting request (messages only)...');
+                            // 只轉換messages內容，不轉換路徑/ID/metadata
+                            body = convertMessagesOnly(body);
                             options.body = JSON.stringify(body);
-                            console.log(DEBUG_PREFIX, 'Request converted');
+                            console.log(DEBUG_PREFIX, 'Request converted safely');
                         }
                     }
                 } catch (error) {
@@ -147,18 +171,17 @@
             // 執行原始fetch
             const response = await originalFetch.call(this, url, options);
             
-            // === 回應後轉換（AI回應）- 優化版 ===
+            // === 回應後轉換（AI回應）===
             if (extensionSettings.enabled && extensionSettings.autoConvert) {
                 const contentType = response.headers.get('content-type');
                 
                 // 只處理JSON回應
                 if (contentType && contentType.includes('application/json')) {
                     try {
-                        // 直接讀取並轉換，不用clone（更高效！）
                         const responseData = await response.json();
+                        // 回應可以深度轉換（AI生成的內容）
                         const convertedData = deepConvertObject(responseData);
                         
-                        // 創建新的Response返回
                         console.log(DEBUG_PREFIX, 'Response converted');
                         return new Response(JSON.stringify(convertedData), {
                             status: response.status,
@@ -167,7 +190,6 @@
                         });
                     } catch (error) {
                         console.error(DEBUG_PREFIX, 'Error converting response:', error);
-                        // 發生錯誤，返回原始response（但已經被讀取了，需要重新fetch）
                         return originalFetch.call(this, url, options);
                     }
                 }
@@ -176,7 +198,7 @@
             return response;
         };
         
-        console.log(DEBUG_PREFIX, 'Fetch hook installed - optimized for performance!');
+        console.log(DEBUG_PREFIX, 'Fetch hook installed - safe conversion mode!');
     }
 
     // === UI相關 ===
